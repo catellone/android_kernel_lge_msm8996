@@ -421,6 +421,11 @@ static inline int hrtimer_callback_running(struct hrtimer *timer)
 	return hrtimer_callback_running_relaxed(timer);
 }
 
+static inline int hrtimer_callback_running_relaxed(struct hrtimer *timer)
+{
+	return cpu_relaxed_read_long(&timer->state) & HRTIMER_STATE_CALLBACK;
+}
+
 /* Forward a hrtimer so it expires after now: */
 extern u64
 hrtimer_forward(struct hrtimer *timer, ktime_t now, ktime_t interval);
