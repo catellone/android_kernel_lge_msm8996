@@ -145,6 +145,7 @@ u64 gpu_idletime =  0ULL;
 struct cpufreq_interactive_tunables {
 	int usage_count;
 	/* Hi speed to bump to from lo speed when load burst (default max) */
+#define DEFAULT_HISPEED_FREQ 1056000
 	unsigned int hispeed_freq;
 	/* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
@@ -203,13 +204,13 @@ struct cpufreq_interactive_tunables {
 	unsigned int max_freq_hysteresis;
 
 	/* Ignore hispeed_freq and above_hispeed_delay for notification */
-	bool ignore_hispeed_on_notif;
+	bool ignore_hispeed_on_notif=true;
 
 	/* Ignore min_sample_time for notification */
-	bool fast_ramp_down;
+	bool fast_ramp_down=true;
 
 	/* Whether to enable prediction or not */
-	bool enable_prediction;
+	bool enable_prediction=true;
 };
 
 /* For cases where we have single governor instance for system */
