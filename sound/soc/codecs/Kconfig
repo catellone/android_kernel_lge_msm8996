@@ -932,4 +932,15 @@ config LGE_ENABLE_HDSET_FACTORY
 config SOUND_CONTROL
 	bool "Sound control for wcd9335"
 
+config SW_100K_TO_GND
+	bool "Detect FM radio cable"
+	help
+	use 100K ohm in pmic to detect specific cable
+
+config SOUND_CONTROL_HAX_3_GPL
+	tristate "new wcd93xx sound control hax"
+	default y
+	help
+	FauxSound WCD93xx chipset sound control hacks 3.0 for deeper hax
+
 endmenu
