@@ -2157,7 +2157,7 @@ static int fg_interleaved_mem_read(struct fg_chip *chip, u8 *val, u16 address,
 		retry = false;
 		goto retry;
 	}
-
+	
 	mutex_unlock(&chip->rw_lock);
  exit:
 	fg_relax(&chip->memif_wakeup_source);
@@ -2343,11 +2343,9 @@ static void fg_handle_battery_insertion(struct fg_chip *chip)
 {
 	reinit_completion(&chip->batt_id_avail);
 	reinit_completion(&chip->fg_reset_done);
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->batt_profile_init, 0);
+	schedule_delayed_work(&chip->batt_profile_init, 0);
 	cancel_delayed_work(&chip->update_sram_data);
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->update_sram_data, msecs_to_jiffies(0));
+	schedule_delayed_work(&chip->update_sram_data, msecs_to_jiffies(0));
 }
 
 #ifndef CONFIG_LGE_PM
@@ -2954,9 +2952,9 @@ static int set_prop_jeita_temp(struct fg_chip *chip,
 	settings[type].value = decidegc;
 
 	cancel_delayed_work_sync(
-		&chip->update_jeita_setting);
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->update_jeita_setting, 0);
+				 &chip->update_jeita_setting);
+	schedule_delayed_work(
+			      &chip->update_jeita_setting, 0);
 
 	return rc;
 }
@@ -3339,13 +3337,6 @@ try_again:
 	} else {
 		chip->last_beat_count = beat_count;
 	}
-resched:
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->check_sanity_work,
-		msecs_to_jiffies(SANITY_CHECK_PERIOD_MS));
-out:
-	fg_relax(&chip->sanity_wakeup_source);
-}
 
 #if defined (CONFIG_MACH_MSM8996_LUCYE) || defined (CONFIG_MACH_MSM8996_FALCON)
 	batt_vol = get_sram_prop_now(chip, FG_DATA_VOLTAGE) / 1000;
@@ -3373,7 +3364,7 @@ out:
 		 (chip->vint_err_pct / 100 < VINT_ERR_FOR_FG_RESET * (-1))){
 		vint_err_count++;
 
-		pr_info("vint_err %d, count %d\n",
+		pr_info("vint_err %d, count %d\n", 
 			chip->vint_err_pct / 100, vint_err_count);
 
 		if (vint_err_count >= CHECK_VINT_ERR_COUNT) {
@@ -3427,7 +3418,7 @@ static void update_sram_data_work(struct work_struct *work)
 
 out:
 	if (!rc)
-		queue_delayed_work(system_power_efficient_wq,
+		schedule_delayed_work(
 			&chip->update_sram_data,
 			msecs_to_jiffies(resched_ms));
 }
@@ -3633,10 +3624,10 @@ out:
 	}
 	fg_relax(&chip->update_temp_wakeup_source);
 
-resched:
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->update_temp_work,
-		msecs_to_jiffies(TEMP_PERIOD_UPDATE_MS));
+ resched:
+	schedule_delayed_work(
+			      &chip->update_temp_work,
+			      msecs_to_jiffies(TEMP_PERIOD_UPDATE_MS));
 }
 
 static void update_jeita_setting(struct work_struct *work)
@@ -5434,8 +5425,7 @@ static void status_change_work(struct work_struct *work)
 		 */
 		if (chip->last_temp_update_time && chip->soc_slope_limiter_en) {
 			cancel_delayed_work_sync(&chip->update_temp_work);
-			queue_delayed_work(system_power_efficient_wq,
-				&chip->update_temp_work,
+			schedule_delayed_work(&chip->update_temp_work,
 				msecs_to_jiffies(0));
 		}
 
@@ -5451,9 +5441,8 @@ static void status_change_work(struct work_struct *work)
 		 */
 		if (chip->last_sram_update_time + 5 < current_time) {
 			cancel_delayed_work(&chip->update_sram_data);
-			queue_delayed_work(system_power_efficient_wq,
-				&chip->update_sram_data,
-				msecs_to_jiffies(0));
+			schedule_delayed_work(&chip->update_sram_data,
+					      msecs_to_jiffies(0));
 		}
 
 		if (chip->cyc_ctr.en)
@@ -6671,8 +6660,7 @@ static irqreturn_t fg_vbatt_low_handler(int irq, void *_chip)
 			disable_irq_nosync(chip->batt_irq[VBATT_LOW].irq);
 			chip->vbat_low_irq_enabled = false;
 			fg_stay_awake(&chip->empty_check_wakeup_source);
-			queue_delayed_work(system_power_efficient_wq,
-				&chip->check_empty_work,
+			schedule_delayed_work(&chip->check_empty_work,
 				msecs_to_jiffies(FG_EMPTY_DEBOUNCE_MS));
 		} else {
 			if (fg_debug_mask & FG_IRQS)
@@ -6837,8 +6825,7 @@ static irqreturn_t fg_soc_irq_handler(int irq, void *_chip)
 		msoc = get_monotonic_soc_raw(chip);
 		if (msoc == 0 || chip->soc_empty) {
 			fg_stay_awake(&chip->empty_check_wakeup_source);
-			queue_delayed_work(system_power_efficient_wq,
-				&chip->check_empty_work,
+			schedule_delayed_work(&chip->check_empty_work,
 				msecs_to_jiffies(FG_EMPTY_DEBOUNCE_MS));
 		}
 	}
@@ -6921,8 +6908,7 @@ static irqreturn_t fg_empty_soc_irq_handler(int irq, void *_chip)
 		pr_info("triggered 0x%x\n", soc_rt_sts);
 	if (fg_is_batt_empty(chip)) {
 		fg_stay_awake(&chip->empty_check_wakeup_source);
-		queue_delayed_work(system_power_efficient_wq,
-			&chip->check_empty_work,
+		schedule_delayed_work(&chip->check_empty_work,
 			msecs_to_jiffies(FG_EMPTY_DEBOUNCE_MS));
 	} else {
 		chip->soc_empty = false;
@@ -7571,8 +7557,7 @@ try_again:
 
 			if (!tried_once) {
 				cancel_delayed_work(&chip->update_sram_data);
-				queue_delayed_work(system_power_efficient_wq,
-					&chip->update_sram_data,
+				schedule_delayed_work(&chip->update_sram_data,
 					msecs_to_jiffies(0));
 				msleep(1000);
 				tried_once = true;
@@ -8219,12 +8204,12 @@ no_profile:
 
 update:
 	cancel_delayed_work(&chip->update_sram_data);
-	queue_delayed_work(system_power_efficient_wq,
+	schedule_delayed_work(
 		&chip->update_sram_data,
 		msecs_to_jiffies(0));
 
 reschedule:
-	queue_delayed_work(system_power_efficient_wq,
+	schedule_delayed_work(
 		&chip->batt_profile_init,
 		msecs_to_jiffies(BATTERY_PSY_WAIT_MS));
 	fg_relax(&chip->profile_wakeup_source);
@@ -8248,7 +8233,7 @@ static void check_empty_work(struct work_struct *work)
 		msoc = get_monotonic_soc_raw(chip);
 
 		if (fg_debug_mask & FG_STATUS)
-			pr_info("Vbatt_low: %d, msoc: %d\n", vbatt_low_sts,
+			pr_info("Vbatt_low: %d, msoc: %d\n", vbatt_low_sts, 
 					msoc);
 		if (vbatt_low_sts || (msoc == 0))
 		        chip->soc_empty = true;
@@ -10456,8 +10441,7 @@ out:
 	fg_enable_irqs(chip, true);
 	update_sram_data_work(&chip->update_sram_data.work);
 	update_temp_data(&chip->update_temp_work.work);
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->check_sanity_work,
+	schedule_delayed_work(&chip->check_sanity_work,
 		msecs_to_jiffies(1000));
 	chip->ima_error_handling = false;
 	mutex_unlock(&chip->ima_recovery_lock);
@@ -10613,9 +10597,9 @@ static void delayed_init_work(struct work_struct *work)
 	/* release memory access before update_sram_data is called */
 	fg_mem_release(chip);
 
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->update_jeita_setting,
-		msecs_to_jiffies(INIT_JEITA_DELAY_MS));
+	schedule_delayed_work(
+			      &chip->update_jeita_setting,
+			      msecs_to_jiffies(INIT_JEITA_DELAY_MS));
 
 	if (chip->last_sram_update_time == 0)
 		update_sram_data_work(&chip->update_sram_data.work);
@@ -10624,12 +10608,10 @@ static void delayed_init_work(struct work_struct *work)
 		update_temp_data(&chip->update_temp_work.work);
 
 	if (!chip->use_otp_profile)
-		queue_delayed_work(system_power_efficient_wq,
-			&chip->batt_profile_init, 0);
+		schedule_delayed_work(&chip->batt_profile_init, 0);
 
 	if (chip->ima_supported && fg_reset_on_lockup)
-		queue_delayed_work(system_power_efficient_wq,
-			&chip->check_sanity_work,
+		schedule_delayed_work(&chip->check_sanity_work,
 			msecs_to_jiffies(1000));
 
 	if (chip->wa_flag & IADC_GAIN_COMP_WA) {
@@ -11025,8 +11007,8 @@ static void check_and_update_sram_data(struct fg_chip *chip)
 	else
 		time_left = 0;
 
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->update_temp_work, msecs_to_jiffies(time_left * 1000));
+	schedule_delayed_work(
+			      &chip->update_temp_work, msecs_to_jiffies(time_left * 1000));
 
 	next_update_time = chip->last_sram_update_time
 		+ (fg_sram_update_period_ms / 1000);
@@ -11036,8 +11018,8 @@ static void check_and_update_sram_data(struct fg_chip *chip)
 	else
 		time_left = 0;
 
-	queue_delayed_work(system_power_efficient_wq,
-		&chip->update_sram_data, msecs_to_jiffies(time_left * 1000));
+	schedule_delayed_work(
+			      &chip->update_sram_data, msecs_to_jiffies(time_left * 1000));
 }
 
 static int fg_suspend(struct device *dev)
@@ -11148,8 +11130,7 @@ static int fg_reset_lockup_set(const char *val, const struct kernel_param *kp)
 		pr_info("fg_reset_on_lockup set to %d\n", fg_reset_on_lockup);
 
 	if (fg_reset_on_lockup)
-		queue_delayed_work(system_power_efficient_wq,
-			&chip->check_sanity_work,
+		schedule_delayed_work(&chip->check_sanity_work,
 			msecs_to_jiffies(1000));
 	else
 		cancel_delayed_work_sync(&chip->check_sanity_work);
