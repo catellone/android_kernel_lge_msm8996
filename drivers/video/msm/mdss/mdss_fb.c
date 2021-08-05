@@ -1826,8 +1826,7 @@ static int mdss_fb_suspend_sub(struct msm_fb_data_type *mfd)
 		 * on, but turn off all interface clocks.
 		 */
 		if (mdss_fb_is_power_on(mfd)) {
-            int flag = mfd->panel_info->type == MIPI_CMD_PANEL ? BLANK_FLAG_ULP : BLANK_FLAG_LP;
-			ret = mdss_fb_blank_sub(flag, mfd->fbi,
+			ret = mdss_fb_blank_sub(BLANK_FLAG_ULP, mfd->fbi,
 					mfd->suspend.op_enable);
 			if (ret) {
 				pr_err("can't turn off display!\n");
