@@ -203,13 +203,13 @@ struct cpufreq_interactive_tunables {
 	unsigned int max_freq_hysteresis;
 
 	/* Ignore hispeed_freq and above_hispeed_delay for notification */
-	bool ignore_hispeed_on_notif=1;
+	bool ignore_hispeed_on_notif;
 
 	/* Ignore min_sample_time for notification */
-	bool fast_ramp_down=1;
+	bool fast_ramp_down;
 
 	/* Whether to enable prediction or not */
-	bool enable_prediction=1;
+	bool enable_prediction;
 };
 
 /* For cases where we have single governor instance for system */
