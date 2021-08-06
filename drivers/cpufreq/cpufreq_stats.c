@@ -14,9 +14,11 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
-#include <linux/uaccess.h>
+#include <linux/of.h>
+#include <linux/sched.h>
+#include <linux/cputime.h>
 
-#define UID_HASH_BITS 10
+static spinlock_t cpufreq_stats_lock;
 
 struct cpufreq_stats {
 	unsigned int cpu;
