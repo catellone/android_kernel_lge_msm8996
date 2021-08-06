@@ -52,31 +52,6 @@ struct all_freq_table {
 };
 
 static struct all_freq_table *all_freq_table;
-static bool cpufreq_all_freq_init;
-static struct proc_dir_entry *uid_cpupower;
-/* STOPSHIP: uid_cpupower_enable is used to enable/disable concurrent_*_time
- * This varible will be used in P/H experiments and should be removed before
- * launch.
- *
- * Because it is being used to test performance and power, it should have a
- * minimum impact on both. For these performance reasons, it will not be guarded
- * by a lock or protective barriers. This limits what it can safely
- * enable/disable.
- *
- * It is safe to check it before updating any concurrent_*_time stats. If there
- * are changes uid_cpupower_enable state while we are updating the stats, we
- * will simply ignore the changes until the next attempt to update the stats.
- * This may result in a couple ms where the uid_cpupower_enable is in one state
- * and the code is acting in another. Since the P/H experiments are done over
- * the course of many days, a couple ms delay should not be an issue.
- *
- * It is not safe to delete the associated proc files without additional locking
- * mechanisms that would hurt performance. Leaving the files empty but intact
- * will not have any impact on the P/H experiments provided that userspace does
- * not attempt to read them. Since the P/H experiment will also disable the code
- * that reads these files from userspace, this is not a concern.
- */
-static char uid_cpupower_enable;
 
 static DEFINE_PER_CPU(struct all_cpufreq_stats *, all_cpufreq_stats);
 static DEFINE_PER_CPU(struct cpufreq_stats *, cpufreq_stats_table);
@@ -115,71 +90,6 @@ static int cpufreq_stats_update(unsigned int cpu)
 	}
 	stat->last_time = cur_time;
 	spin_unlock(&cpufreq_stats_lock);
-	return 0;
-}
-
-void cpufreq_task_stats_init(struct task_struct *p)
-{
-	size_t alloc_size;
-	void *temp;
-	unsigned long flags;
-
-	spin_lock_irqsave(&task_time_in_state_lock, flags);
-	p->time_in_state = NULL;
-	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
-	WRITE_ONCE(p->max_states, 0);
-
-	if (!all_freq_table || !cpufreq_all_freq_init)
-		return;
-
-	WRITE_ONCE(p->max_states, all_freq_table->table_size);
-
-	/* Create all_freq_table for clockticks in all possible freqs in all
-	 * cpus
-	 */
-	alloc_size = p->max_states * sizeof(p->time_in_state[0]);
-	temp = kzalloc(alloc_size, GFP_KERNEL);
-
-	spin_lock_irqsave(&task_time_in_state_lock, flags);
-	p->time_in_state = temp;
-	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
-}
-
-void cpufreq_task_stats_exit(struct task_struct *p)
-{
-	unsigned long flags;
-	void *temp;
-
-	spin_lock_irqsave(&task_time_in_state_lock, flags);
-	temp = p->time_in_state;
-	p->time_in_state = NULL;
-	spin_unlock_irqrestore(&task_time_in_state_lock, flags);
-	kfree(temp);
-}
-
-int proc_time_in_state_show(struct seq_file *m, struct pid_namespace *ns,
-			    struct pid *pid, struct task_struct *p)
-{
-	int i;
-	cputime_t cputime;
-	unsigned long flags;
-
-	if (!all_freq_table || !cpufreq_all_freq_init || !p->time_in_state)
-		return 0;
-
-	spin_lock(&cpufreq_stats_lock);
-	for (i = 0; i < p->max_states; ++i) {
-		cputime = 0;
-		spin_lock_irqsave(&task_time_in_state_lock, flags);
-		if (p->time_in_state)
-			cputime = atomic_read(&p->time_in_state[i]);
-		spin_unlock_irqrestore(&task_time_in_state_lock, flags);
-
-		seq_printf(m, "%d %lu\n", all_freq_table->freq_table[i],
-			(unsigned long)cputime_to_clock_t(cputime));
-	}
-	spin_unlock(&cpufreq_stats_lock);
-
 	return 0;
 }
 
@@ -227,8 +137,6 @@ static int get_index_all_cpufreq_stat(struct all_cpufreq_stats *all_stat,
 void acct_update_power(struct task_struct *task, cputime_t cputime) {
 	struct cpufreq_power_stats *powerstats;
 	struct cpufreq_stats *stats;
-	struct cpufreq_policy *policy;
-	struct uid_entry *uid_entry;
 	unsigned int cpu_num, curr;
 
 	if (!task)
@@ -698,35 +606,6 @@ static void cpufreq_stats_create_table(unsigned int cpu)
 	cpufreq_cpu_put(policy);
 }
 
-static void uid_entry_reclaim(struct rcu_head *rcu)
-{
-	struct uid_entry *uid_entry = container_of(rcu, struct uid_entry, rcu);
-
-	kfree(uid_entry->concurrent_active_time);
-	kfree(uid_entry);
-}
-
-void cpufreq_task_stats_remove_uids(uid_t uid_start, uid_t uid_end)
-{
-	struct uid_entry *uid_entry;
-	struct hlist_node *tmp;
-	unsigned long flags;
-
-	spin_lock_irqsave(&uid_lock, flags);
-
-	for (; uid_start <= uid_end; uid_start++) {
-		hash_for_each_possible_safe(uid_hash_table, uid_entry, tmp,
-			hash, uid_start) {
-			if (uid_start == uid_entry->uid) {
-				hash_del_rcu(&uid_entry->hash);
-				call_rcu(&uid_entry->rcu, uid_entry_reclaim);
-			}
-		}
-	}
-
-	spin_unlock_irqrestore(&uid_lock, flags);
-}
-
 static int cpufreq_stat_notifier_policy(struct notifier_block *nb,
 		unsigned long val, void *data)
 {
@@ -848,32 +727,6 @@ static int __init cpufreq_stats_init(void)
 	if (ret)
 		pr_warn("Cannot create sysfs file for cpufreq current stats\n");
 
-	proc_create_data("uid_time_in_state", 0444, NULL,
-		&uid_time_in_state_fops, NULL);
-
-	profile_event_register(PROFILE_TASK_EXIT, &process_notifier_block);
-
-	uid_cpupower = proc_mkdir("uid_cpupower", NULL);
-	if (!uid_cpupower) {
-		pr_warn("%s: failed to create uid_cputime proc entry\n",
-			__func__);
-	} else {
-		proc_create_data("enable", 0666, uid_cpupower,
-			&uid_cpupower_enable_fops, NULL);
-
-		proc_create_data("time_in_state", 0444, uid_cpupower,
-			&time_in_state_fops, NULL);
-
-		proc_create_data("concurrent_active_time", 0444, uid_cpupower,
-			&concurrent_active_time_fops, NULL);
-
-		proc_create_data("concurrent_policy_time", 0444, uid_cpupower,
-			&concurrent_policy_time_fops, NULL);
-
-		uid_cpupower_enable = 1;
-	}
-
-	cpufreq_all_freq_init = true;
 	return 0;
 }
 static void __exit cpufreq_stats_exit(void)
