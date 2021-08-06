@@ -18,10 +18,6 @@
 
 #define UID_HASH_BITS 10
 
-DECLARE_HASHTABLE(uid_hash_table, UID_HASH_BITS);
-
-static spinlock_t cpufreq_stats_lock;
-
 struct cpufreq_stats {
 	unsigned int cpu;
 	unsigned int total_trans;
