@@ -2858,6 +2858,7 @@
 		qcom,synchronous-cluster-map = <0 2 &CPU0 &CPU1>,
 			<1 2 &CPU2 &CPU3>;
 
+    qcom,disable-vdd-rstr;
 		qcom,vdd-restriction-temp = <5>;
 		qcom,vdd-restriction-temp-hysteresis = <10>;
 
